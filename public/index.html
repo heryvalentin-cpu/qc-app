@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>QC Application</title>
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    margin:40px;
+}
+
+input, textarea, select{
+    width:300px;
+    padding:8px;
+    margin-bottom:10px;
+}
+
+button{
+    padding:10px 20px;
+    cursor:pointer;
+}
+</style>
+
+</head>
+
+<body>
+
+<h2>QC Check Form</h2>
+
+<form id="qcForm" enctype="multipart/form-data">
+
+    <input type="text" name="reference" placeholder="Reference" required><br>
+
+    <textarea name="description" placeholder="Description"></textarea><br>
+
+    <input type="file" name="file"><br>
+
+    <input type="text" name="qc_name" placeholder="QC Name" required><br>
+
+    <select name="status">
+        <option value="Pending">Pending</option>
+        <option value="Approved">Approved</option>
+        <option value="Rejected">Rejected</option>
+    </select><br>
+
+    <button type="submit">Submit</button>
+
+</form>
+
+<script>
+document.getElementById("qcForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+
+    const formData = new FormData(this);
+
+    await fetch("/add", {
+        method: "POST",
+        body: formData
+    });
+
+    alert("Data saved successfully!");
+
+    this.reset();
+});
+</script>
+
+</body>
+</html>
