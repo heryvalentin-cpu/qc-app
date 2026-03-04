@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2");
 const multer = require("multer");
@@ -8,29 +9,35 @@ const { Parser } = require("json2csv");
 const ExcelJS = require("exceljs");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-// Upload folder
-if (!fs.existsSync("uploads")){
+// Create uploads folder if not exists
+if (!fs.existsSync("uploads")) {
     fs.mkdirSync("uploads");
 }
 
-// MySQL Connection
+// MySQL Cloud Connection
 const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "changeme",
-    database: "qc_app"
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: 17331
 });
 
 db.connect(err => {
-    if (err) throw err;
+    if (err) {
+        console.error("MySQL Connection Error:", err);
+        return;
+    }
     console.log("MySQL Connected...");
 });
 
-// Multer config
+// Multer Storage Config
 const storage = multer.diskStorage({
     destination: "./uploads/",
     filename: (req, file, cb) => {
@@ -40,36 +47,49 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Insert QC data
+/*
+====================================
+ QC DATA INSERT
+====================================
+*/
 app.post("/add", upload.single("file"), (req, res) => {
 
     const { reference, description, qc_name, status } = req.body;
 
     const file_path = req.file ? req.file.path : null;
 
-    db.query(
-        "INSERT INTO checks (reference, description, file_path, qc_name, status) VALUES (?,?,?,?,?)",
+    const sql = `
+    INSERT INTO checks (reference, description, file_path, qc_name, status)
+    VALUES (?,?,?,?,?)
+    `;
+
+    db.query(sql,
         [reference, description, file_path, qc_name, status],
         err => {
-            if (err) throw err;
+            if (err) {
+                console.error(err);
+                return res.status(500).send("Database insert error");
+            }
+
             res.send("Data inserted");
-        }
-    );
+        });
 });
 
-// Import CSV / Excel structure variable
+/*
+====================================
+ IMPORT CSV / EXCEL VARIABLE STRUCTURE
+====================================
+*/
 app.post("/import", upload.single("file"), (req, res) => {
 
     if (!req.file) return res.send("No file uploaded");
 
-    let data = [];
-
     const filePath = req.file.path;
+    let data = [];
 
     if (req.file.originalname.endsWith(".csv")) {
 
         const content = fs.readFileSync(filePath, "utf8");
-
         const rows = content.split("\n");
         const headers = rows[0].split(",");
 
@@ -91,13 +111,12 @@ app.post("/import", upload.single("file"), (req, res) => {
     } else {
 
         const workbook = xlsx.readFile(filePath);
-        const sheet = workbook.SheetNames[0];
-        const sheetData = workbook.Sheets[sheet];
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
 
-        data = xlsx.utils.sheet_to_json(sheetData);
+        data = xlsx.utils.sheet_to_json(sheet);
     }
 
-    // Insert dynamic data
     data.forEach(row => {
 
         const columns = Object.keys(row);
@@ -115,7 +134,11 @@ app.post("/import", upload.single("file"), (req, res) => {
     res.send("Import successful");
 });
 
-// Export CSV
+/*
+====================================
+ EXPORT CSV
+====================================
+*/
 app.get("/export/csv", (req, res) => {
 
     db.query("SELECT * FROM checks", (err, results) => {
@@ -124,12 +147,16 @@ app.get("/export/csv", (req, res) => {
         const csv = parser.parse(results);
 
         res.header("Content-Type", "text/csv");
-        res.attachment("checks.csv");
+        res.attachment("qc_export.csv");
         res.send(csv);
     });
 });
 
-// Export Excel
+/*
+====================================
+ EXPORT EXCEL
+====================================
+*/
 app.get("/export/excel", (req, res) => {
 
     db.query("SELECT * FROM checks", async (err, results) => {
@@ -137,7 +164,7 @@ app.get("/export/excel", (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet("QC Data");
 
-        if (results.length > 0){
+        if (results.length > 0) {
             worksheet.columns = Object.keys(results[0]).map(key => ({
                 header: key,
                 key: key
@@ -153,7 +180,7 @@ app.get("/export/excel", (req, res) => {
 
         res.setHeader(
             "Content-Disposition",
-            "attachment; filename=qc_data.xlsx"
+            "attachment; filename=qc_export.xlsx"
         );
 
         await workbook.xlsx.write(res);
@@ -161,4 +188,13 @@ app.get("/export/excel", (req, res) => {
     });
 });
 
-app.listen(3000, () => console.log("Server running on port 3000"));
+/*
+====================================
+ SERVER START
+====================================
+*/
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log("Server running on port", PORT);
+});
